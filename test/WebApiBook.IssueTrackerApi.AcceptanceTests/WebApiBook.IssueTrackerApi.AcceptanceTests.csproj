@@ -63,6 +63,9 @@
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
+    <Reference Include="TestStack.BDDfy">
+      <HintPath>..\..\src\packages\TestStack.BDDfy.3.16.14\lib\NET40\TestStack.BDDfy.dll</HintPath>
+    </Reference>
     <Reference Include="Xbehave">
       <HintPath>..\..\src\packages\Xbehave.0.15.0\lib\net40\Xbehave.dll</HintPath>
     </Reference>

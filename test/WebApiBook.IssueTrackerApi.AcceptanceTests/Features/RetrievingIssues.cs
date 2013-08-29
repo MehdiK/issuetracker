@@ -4,9 +4,12 @@ using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Should;
+using TestStack.BDDfy;
 using WebApiBook.IssueTrackerApi.Infrastructure;
 using WebApiBook.IssueTrackerApi.Models;
 using Xbehave;
+using Xunit;
+using TestStack.BDDfy.Scanners.StepScanners.Fluent;
 
 namespace WebApiBook.IssueTrackerApp.AcceptanceTests.Features
 {
@@ -15,135 +18,158 @@ namespace WebApiBook.IssueTrackerApp.AcceptanceTests.Features
         private Uri _uriIssues = new Uri("http://localhost/issue");
         private Uri _uriIssue1 = new Uri("http://localhost/issue/1");
         private Uri _uriIssue2 = new Uri("http://localhost/issue/2");
- 
-        [Scenario]
+        private IssuesState _issuesState;
+        private IssueState _issueState;
+        private Issue _fakeIssue;
+
+        void GivenAnExistingIssue(string issueId)
+        {
+            MockIssueStore.Setup(i => i.FindAsync(issueId)).Returns(Task.FromResult(_fakeIssue));
+        }
+
+        void GivenExistingIssues()
+        {
+            MockIssueStore.Setup(i => i.FindAsync()).Returns(Task.FromResult(FakeIssues));
+        }
+
+        void WhenAllIssuesAreRetrieved()
+        {
+            Request.RequestUri = _uriIssues;
+            Response = Client.SendAsync(Request).Result;
+            _issuesState = Response.Content.ReadAsAsync<IssuesState>().Result;
+        }
+
+        void ThenHttpStatusCodeIs(HttpStatusCode statusCode)
+        {
+            Response.StatusCode.ShouldEqual(statusCode);
+        }
+
+        void AndAllIssuesAreReturned()
+        {
+            _issuesState.Issues.FirstOrDefault(i => i.Id == "1").ShouldNotBeNull();
+            _issuesState.Issues.FirstOrDefault(i => i.Id == "2").ShouldNotBeNull();
+        }
+
+        void WhenItIsRetrieved(Uri uri)
+        {
+            Request.RequestUri = uri;
+            Response = Client.SendAsync(Request).Result;
+            if(Response.Content != null)
+                _issueState = Response.Content.ReadAsAsync<IssueState>().Result;
+        }
+
+        void AndIssueStateIsReturned()
+        {
+            _issueState.ShouldNotBeNull();
+        }
+
+        void WithAnId()
+        {
+            _issueState.Id.ShouldEqual(_fakeIssue.Id);
+        }
+
+        void AndATitle()
+        {
+            _issueState.Title.ShouldEqual(_fakeIssue.Title);
+        }
+
+        void AndADescription()
+        {
+            _issueState.Description.ShouldEqual(_fakeIssue.Description);
+        }
+
+        void AndTheCorrectState()
+        {
+            _issueState.Status.ShouldEqual(_fakeIssue.Status);
+        }
+
+        void AndASelfLink()
+        {
+            var link = _issueState.Links.FirstOrDefault(l => l.Rel == IssueLinkFactory.Rels.Self);
+            link.ShouldNotBeNull();
+            link.Href.AbsoluteUri.ShouldEqual("http://localhost/issue/1");
+        }
+
+        void AndATransitionLink()
+        {
+            var link = _issueState.Links.FirstOrDefault(l => l.Rel == IssueLinkFactory.Rels.IssueProcessor && l.Action == IssueLinkFactory.Actions.Transition);
+            link.ShouldNotBeNull();
+            link.Href.AbsoluteUri.ShouldEqual("http://localhost/issueprocessor/1?action=transition");
+        }
+
+        void ThenItShouldHaveACloseActionLink()
+        {
+            var link = _issueState.Links.FirstOrDefault(
+                    l => l.Rel == IssueLinkFactory.Rels.IssueProcessor && l.Action == IssueLinkFactory.Actions.Close);
+            link.ShouldNotBeNull();
+            link.Href.AbsoluteUri.ShouldEqual("http://localhost/issueprocessor/1?action=close");
+        }
+
+        void ThenItShouldHaveAnOpenActionLink()
+        {
+            var link =
+                _issueState.Links.FirstOrDefault(
+                    l => l.Rel == IssueLinkFactory.Rels.IssueProcessor && l.Action == IssueLinkFactory.Actions.Open);
+            link.ShouldNotBeNull();
+            link.Href.AbsoluteUri.ShouldEqual("http://localhost/issueprocessor/2?action=open");
+        }
+
+        [Fact]
         public void RetrievingAllIssues()
         {
-            IssuesState issuesState = null;
-
-            "Given existing issues".
-                f(() => MockIssueStore.Setup(i => i.FindAsync()).Returns(Task.FromResult(FakeIssues)));
-            "When all issues are retrieved".
-                f(() =>
-                    {
-                        Request.RequestUri = _uriIssues;
-                        Response = Client.SendAsync(Request).Result;
-                        issuesState = Response.Content.ReadAsAsync<IssuesState>().Result;
-                    });
-            "Then a '200 OK' status is returned".
-                f(() => Response.StatusCode.ShouldEqual(HttpStatusCode.OK));
-            "Then they are returned".
-                f(() =>
-                    {
-                        issuesState.Issues.FirstOrDefault(i => i.Id == "1").ShouldNotBeNull();
-                        issuesState.Issues.FirstOrDefault(i => i.Id == "2").ShouldNotBeNull();
-                    });
+            this.Given(x => x.GivenExistingIssues())
+                .When(x => x.WhenAllIssuesAreRetrieved())
+                .Then(x => x.ThenHttpStatusCodeIs(HttpStatusCode.OK), "Then a '200 OK' status is returned")
+                   .And(x => x.AndAllIssuesAreReturned())
+                .BDDfy();
         }
 
-        [Scenario]
+        [Fact]
         public void RetrievingAnIssue()
         {
-            IssueState issue = null;
-
-            var fakeIssue = FakeIssues.FirstOrDefault();
-            "Given an existing issue".
-                f(() => MockIssueStore.Setup(i => i.FindAsync("1")).Returns(Task.FromResult(fakeIssue)));
-            "When it is retrieved".
-                f(() =>
-                    {
-                        Request.RequestUri = _uriIssue1;
-                        Response = Client.SendAsync(Request).Result;
-                        issue = Response.Content.ReadAsAsync<IssueState>().Result;
-                    });
-            "Then a '200 OK' status is returned".
-                f(() => Response.StatusCode.ShouldEqual(HttpStatusCode.OK));
-            "Then it is returned".
-                f(() => issue.ShouldNotBeNull());
-            "Then it should have an id".
-                f(() => issue.Id.ShouldEqual(fakeIssue.Id));
-            "Then it should have a title".
-                f(() => issue.Title.ShouldEqual(fakeIssue.Title));
-            "Then it should have a description".
-                f(() => issue.Description.ShouldEqual(fakeIssue.Description));
-            "Then it should have a state".
-                f(() => issue.Status.ShouldEqual(fakeIssue.Status));
-            "Then it should have a 'self' link".
-                f(() =>
-                    {
-                        var link = issue.Links.FirstOrDefault(l => l.Rel == IssueLinkFactory.Rels.Self);
-                        link.ShouldNotBeNull();
-                        link.Href.AbsoluteUri.ShouldEqual("http://localhost/issue/1");
-                    });
-            "Then it should have a transition link".
-                f(() =>
-                    {
-                        var link = issue.Links.FirstOrDefault(l => l.Rel == IssueLinkFactory.Rels.IssueProcessor && l.Action == IssueLinkFactory.Actions.Transition);
-                        link.ShouldNotBeNull();
-                        link.Href.AbsoluteUri.ShouldEqual("http://localhost/issueprocessor/1?action=transition");
-                    });
+            _fakeIssue = FakeIssues.FirstOrDefault();
+            this.Given(x => x.GivenAnExistingIssue("1"), false)
+                .When(x => x.WhenItIsRetrieved(_uriIssue1), false)
+                .Then(x => x.ThenHttpStatusCodeIs(HttpStatusCode.OK), "Then a '200 OK' status is returned")
+                    .And(x => x.AndIssueStateIsReturned())
+                    .And(x => x.WithAnId())
+                    .And(x => x.AndATitle())
+                    .And(x => x.AndADescription())
+                    .And(x => x.AndTheCorrectState())
+                    .And(x => x.AndASelfLink())
+                    .And(x => x.AndATransitionLink())
+                .BDDfy();
         }
 
-        [Scenario]
+        [Fact]
         public void RetrievingAnOpenIssue()
         {
-            var fakeIssue = FakeIssues.Single(i => i.Status == IssueStatus.Open);
-            IssueState issue = null;
-
-            "Given an existing open issue".
-                f(() => MockIssueStore.Setup(i => i.FindAsync("1")).Returns(Task.FromResult(fakeIssue)));
-            "When it is retrieved".
-                f(() =>
-                    {
-                        Request.RequestUri = _uriIssue1;
-                        issue = Client.SendAsync(Request).Result.Content.ReadAsAsync<IssueState>().Result;
-                    });
-            "Then it should have a 'close' action link".
-                f(() =>
-                    {
-                        var link = issue.Links.FirstOrDefault(l => l.Rel == IssueLinkFactory.Rels.IssueProcessor && l.Action == IssueLinkFactory.Actions.Close);
-                        link.ShouldNotBeNull();
-                        link.Href.AbsoluteUri.ShouldEqual("http://localhost/issueprocessor/1?action=close");
-                    });
+            _fakeIssue = FakeIssues.Single(i => i.Status == IssueStatus.Open);
+            this.Given(x => x.GivenAnExistingIssue("1"), false)
+                .When(x => x.WhenItIsRetrieved(_uriIssue1), false)
+                .Then(x => x.ThenItShouldHaveACloseActionLink())
+                .BDDfy();
         }
 
-        [Scenario]
+        [Fact]
         public void RetrievingAClosedIssue()
         {
-            var fakeIssue = FakeIssues.Single(i => i.Status == IssueStatus.Closed);
-            IssueState issue = null;
+            _fakeIssue = FakeIssues.Single(i => i.Status == IssueStatus.Closed);
 
-            "Given an existing closed issue".
-                f(() => MockIssueStore.Setup(i => i.FindAsync("2")).Returns(Task.FromResult(fakeIssue)));
-            "When it is retrieved".
-                f(() =>
-                    {
-                        Request.RequestUri = _uriIssue2;
-                        issue = Client.SendAsync(Request).Result.Content.ReadAsAsync<IssueState>().Result;
-                    });
-            "Then it should have a 'open' action link".
-                f(() =>
-                    {
-                        var link = issue.Links.FirstOrDefault(l => l.Rel == IssueLinkFactory.Rels.IssueProcessor && l.Action == IssueLinkFactory.Actions.Open);
-                        link.ShouldNotBeNull();
-                        link.Href.AbsoluteUri.ShouldEqual("http://localhost/issueprocessor/2?action=open");
-
-                    });
+            this.Given(x => x.GivenAnExistingIssue("2"), "Given an existing closed issue")
+                .When(x => x.WhenItIsRetrieved(_uriIssue2), false)
+                .Then(x => x.ThenItShouldHaveAnOpenActionLink())
+                .BDDfy();
         }
 
-        [Scenario]
+        [Fact]
         public void RetrievingAnIssueThatDoesNotExist()
         {
-            "Given an issue does not exist".
-                f(() => MockIssueStore.Setup(i => i.FindAsync("1")).Returns(Task.FromResult((Issue)null)));
-            "When it is retrieved".
-                f(() =>
-                    {
-                        Request.RequestUri = _uriIssue1;
-                        Response = Client.SendAsync(Request).Result;
-                    });
-            "Then a '404 Not Found' status is returned".
-                f(() => Response.StatusCode.ShouldEqual(HttpStatusCode.NotFound));
+            _fakeIssue = null;
+            this.Given(x => x.GivenAnExistingIssue("1"), "Given an issue does not exist")
+                .When(x => x.WhenItIsRetrieved(_uriIssue1), false)
+                .Then(x => x.ThenHttpStatusCodeIs(HttpStatusCode.NotFound), "Then a '404 Not Found' status is returned")
+                .BDDfy();
         }
-
     }
 }
